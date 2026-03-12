@@ -1,0 +1,18 @@
+[tools]
+go = "1.22"
+
+[tasks.build]
+run = "go build -o bin/n26cli ./cmd/n26cli"
+
+[tasks.install]
+depends = ["build"]
+run = "cp bin/n26cli ~/.local/bin/"
+
+[tasks.dev]
+run = "go run ./cmd/n26cli"
+
+[tasks.test]
+run = "go test ./..."
+
+[tasks.lint]
+run = "golangci-lint run ./..."
