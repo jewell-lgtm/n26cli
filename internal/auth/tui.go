@@ -37,38 +37,54 @@ func RunLoginTUI() (*Session, error) {
 		fmt.Println()
 	}
 
-	// Credential form
+	// Credential resolution: env vars → keychain → interactive form
 	email := os.Getenv("N26_USERNAME")
 	password := os.Getenv("N26_PASSWORD")
 
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Email").
-				Value(&email).
-				Validate(func(s string) error {
-					if s == "" {
-						return fmt.Errorf("email is required")
-					}
-					return nil
-				}),
-			huh.NewInput().
-				Title("Password").
-				EchoMode(huh.EchoModePassword).
-				Value(&password).
-				Validate(func(s string) error {
-					if s == "" {
-						return fmt.Errorf("password is required")
-					}
-					return nil
-				}),
-		),
-	).WithTheme(tui.N26Theme())
+	// Try keychain if we have an email but no password
+	keychainUsed := false
+	if email != "" && password == "" {
+		if pw := GetPasswordFromKeychain(email); pw != "" {
+			password = pw
+			keychainUsed = true
+			fmt.Println(tui.HelpText.Render("  Using password from keychain for " + email))
+		}
+	}
 
-	fmt.Println(tui.Title.Render("N26 Login"))
+	// Show form if we still need credentials
+	if email == "" || password == "" {
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Email").
+					Value(&email).
+					Validate(func(s string) error {
+						if s == "" {
+							return fmt.Errorf("email is required")
+						}
+						return nil
+					}),
+				huh.NewInput().
+					Title("Password").
+					Description("Tip: will be saved to keychain on success").
+					EchoMode(huh.EchoModePassword).
+					Value(&password).
+					Validate(func(s string) error {
+						if s == "" {
+							return fmt.Errorf("password is required")
+						}
+						return nil
+					}),
+			),
+		).WithTheme(tui.N26Theme())
 
-	if err := form.Run(); err != nil {
-		return nil, fmt.Errorf("login form: %w", err)
+		fmt.Println(tui.Title.Render("N26 Login"))
+
+		if err := form.Run(); err != nil {
+			return nil, fmt.Errorf("login form: %w", err)
+		}
+	} else {
+		fmt.Println(tui.Title.Render("N26 Login"))
 	}
 
 	// Request MFA token
@@ -111,6 +127,13 @@ func RunLoginTUI() (*Session, error) {
 			if err := session.Save(); err != nil {
 				return nil, fmt.Errorf("saving session: %w", err)
 			}
+			// Save password to keychain if it wasn't already from there
+			if !keychainUsed {
+				if err := SavePasswordToKeychain(email, password); err == nil {
+					fmt.Println(tui.HelpText.Render("  Password saved to keychain"))
+				}
+			}
+
 			fmt.Println(tui.SuccessMessage.Render(
 				fmt.Sprintf("✓ Authenticated. Session valid until %s.", session.ExpiresAt.Format("15:04")),
 			))
