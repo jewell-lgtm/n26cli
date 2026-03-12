@@ -12,12 +12,13 @@ type jsonTransaction struct {
 	Date             string  `json:"date"`
 	Amount           float64 `json:"amount"`
 	Currency         string  `json:"currency"`
-	OriginalAmount   float64 `json:"original_amount"`
-	OriginalCurrency string  `json:"original_currency"`
-	ExchangeRate     float64 `json:"exchange_rate"`
+	OriginalAmount   float64 `json:"original_amount,omitempty"`
+	OriginalCurrency string  `json:"original_currency,omitempty"`
+	ExchangeRate     float64 `json:"exchange_rate,omitempty"`
 	Merchant         string  `json:"merchant"`
 	Category         string  `json:"category"`
 	Space            string  `json:"space"`
+	SpaceID          string  `json:"space_id,omitempty"`
 	Reference        string  `json:"reference"`
 }
 
@@ -35,6 +36,7 @@ func WriteJSON(w io.Writer, txns []api.Transaction) error {
 			Merchant:         t.Merchant,
 			Category:         t.Category,
 			Space:            t.Space,
+			SpaceID:          t.SpaceID,
 			Reference:        t.Reference,
 		}
 	}

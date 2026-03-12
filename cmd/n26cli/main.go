@@ -52,6 +52,7 @@ Exit codes:
 	root.AddCommand(balanceCmd())
 	root.AddCommand(spacesCmd())
 	root.AddCommand(transactionsCmd())
+	root.AddCommand(configCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -209,7 +210,7 @@ CSV columns:
   original_currency, original_amount, exchange_rate
 
 Files are written to --output-dir (default: current directory).
-Use --output-dir .DONOTCOMMIT/data/n26 to keep exports gitignored.
+Set a persistent default with: n26cli config set output-dir .DONOTCOMMIT/data/n26
 
 Requires a valid session — run 'n26cli login' first if expired.`,
 		Example: `  # Last 30 days as CSV
@@ -227,6 +228,13 @@ Requires a valid session — run 'n26cli login' first if expired.`,
   # MT940 for accounting software import
   n26cli transactions --from 2026-01-01 --format mt940`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Use config default for output-dir if flag wasn't explicitly set
+			if !cmd.Flags().Changed("output-dir") {
+				if cfg := auth.LoadConfig(); cfg.OutputDir != "" {
+					outputDir = cfg.OutputDir
+				}
+			}
+
 			client, err := authenticatedClient()
 			if err != nil {
 				return err
@@ -242,20 +250,31 @@ Requires a valid session — run 'n26cli login' first if expired.`,
 				return exitError(2, "api_error", err.Error())
 			}
 
-			// Resolve space names if grouping
-			if groupBySpace {
-				spaces, err := client.GetSpaces()
-				if err != nil {
-					return exitError(2, "api_error", "fetching spaces: "+err.Error())
+			// Always resolve space names from spaceId
+			spaces, err := client.GetSpaces()
+			if err != nil {
+				return exitError(2, "api_error", "fetching spaces: "+err.Error())
+			}
+			spaceMap := make(map[string]string)
+			var primarySpaceName string
+			for _, sp := range spaces {
+				spaceMap[sp.ID] = sp.Name
+				if sp.IsPrimary {
+					primarySpaceName = sp.Name
 				}
-				spaceMap := make(map[string]string)
-				for _, sp := range spaces {
-					spaceMap[sp.ID] = sp.Name
-				}
-				for i, t := range txns {
-					if name, ok := spaceMap[t.Space]; ok {
+			}
+			if primarySpaceName == "" {
+				primarySpaceName = "Main"
+			}
+			for i, t := range txns {
+				if t.SpaceID != "" {
+					if name, ok := spaceMap[t.SpaceID]; ok {
 						txns[i].Space = name
+					} else {
+						txns[i].Space = t.SpaceID // fallback to raw ID
 					}
+				} else {
+					txns[i].Space = primarySpaceName
 				}
 			}
 
@@ -306,6 +325,73 @@ Requires a valid session — run 'n26cli login' first if expired.`,
 	cmd.Flags().IntVar(&limit, "limit", 0, "Max transactions to return (0 = all)")
 	addFormatFlag(cmd)
 
+	return cmd
+}
+
+// --- config ---
+
+func configCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "View or set persistent configuration",
+		Long: `View or set persistent CLI configuration.
+
+Config is stored at ~/.config/n26cli/config.json.
+
+Available settings:
+  output_dir    Default directory for transaction exports
+
+With no subcommand, prints current config as JSON.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return printJSON(auth.LoadConfig())
+		},
+	}
+
+	setCmd := &cobra.Command{
+		Use:   "set <key> <value>",
+		Short: "Set a config value",
+		Long: `Set a persistent config value.
+
+Available keys:
+  output-dir    Default directory for transaction exports
+                (overridden by --output-dir flag on transactions command)
+
+Examples:
+  n26cli config set output-dir .DONOTCOMMIT/data/n26
+  n26cli config set output-dir ~/finances/n26`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := auth.LoadConfig()
+			switch args[0] {
+			case "output-dir":
+				cfg.OutputDir = args[1]
+			default:
+				return exitError(3, "unknown_key", fmt.Sprintf("unknown config key %q (available: output-dir)", args[0]))
+			}
+			if err := cfg.Save(); err != nil {
+				return exitError(3, "config_error", err.Error())
+			}
+			return printJSON(cfg)
+		},
+	}
+
+	getCmd := &cobra.Command{
+		Use:   "get <key>",
+		Short: "Get a config value",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg := auth.LoadConfig()
+			switch args[0] {
+			case "output-dir":
+				fmt.Println(cfg.OutputDir)
+			default:
+				return exitError(3, "unknown_key", fmt.Sprintf("unknown config key %q", args[0]))
+			}
+			return nil
+		},
+	}
+
+	cmd.AddCommand(setCmd, getCmd)
 	return cmd
 }
 

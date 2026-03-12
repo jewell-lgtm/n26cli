@@ -3,8 +3,6 @@ package api
 import (
 	"fmt"
 	"time"
-
-	"github.com/guitmz/n26"
 )
 
 // Transaction is a clean representation of an n26 transaction.
@@ -18,39 +16,58 @@ type Transaction struct {
 	ExchangeRate     float64
 	Merchant         string
 	Category         string
-	Space            string // resolved later via ResolveSpaceName
+	Space            string // space name, resolved from spaceId
+	SpaceID          string // raw space UUID from API
 	Reference        string
 }
 
-// GetTransactions fetches transactions in the given time range.
-// Pass zero time for from/to to use server defaults. Limit 0 means no limit.
-func (c *Client) GetTransactions(from, to time.Time, limit int) ([]Transaction, error) {
-	var fromTS, toTS n26.TimeStamp
-	if !from.IsZero() {
-		fromTS = n26.TimeStamp{Time: from}
-	}
-	if !to.IsZero() {
-		toTS = n26.TimeStamp{Time: to}
-	}
-
-	limitStr := fmt.Sprint(limit)
-	if limit <= 0 {
-		limitStr = ""
-	}
-
-	raw, err := c.inner.GetTransactions(fromTS, toTS, limitStr)
-	if err != nil {
-		return nil, err
-	}
-	return convertTransactions(raw), nil
+// rawTransaction captures the full N26 API response including fields
+// the guitmz/n26 library drops (notably spaceId).
+type rawTransaction struct {
+	ID               string  `json:"id"`
+	UserID           string  `json:"userId"`
+	Type             string  `json:"type"`
+	Amount           float64 `json:"amount"`
+	CurrencyCode     string  `json:"currencyCode"`
+	OriginalAmount   float64 `json:"originalAmount,omitempty"`
+	OriginalCurrency string  `json:"originalCurrency,omitempty"`
+	ExchangeRate     float64 `json:"exchangeRate,omitempty"`
+	MerchantName     string  `json:"merchantName,omitempty"`
+	PartnerName      string  `json:"partnerName,omitempty"`
+	PartnerIban      string  `json:"partnerIban,omitempty"`
+	ReferenceText    string  `json:"referenceText,omitempty"`
+	AccountID        string  `json:"accountId"`
+	Category         string  `json:"category"`
+	VisibleTS        int64   `json:"visibleTS"`
+	CreatedTS        int64   `json:"createdTS"`
+	// Space-related fields N26 returns but guitmz/n26 ignores
+	SpaceID          *string `json:"spaceId,omitempty"`
+	SpacesMisc       *string `json:"spaces,omitempty"`
 }
 
-func convertTransactions(raw *n26.Transactions) []Transaction {
-	if raw == nil {
-		return nil
+// GetTransactions fetches transactions in the given time range directly from the
+// N26 API, bypassing the guitmz/n26 library to capture spaceId.
+func (c *Client) GetTransactions(from, to time.Time, limit int) ([]Transaction, error) {
+	params := make(map[string]string)
+	if limit > 0 {
+		params["limit"] = fmt.Sprint(limit)
 	}
-	out := make([]Transaction, len(*raw))
-	for i, t := range *raw {
+	if !from.IsZero() && !to.IsZero() {
+		params["from"] = fmt.Sprint(from.UnixMilli())
+		params["to"] = fmt.Sprint(to.UnixMilli())
+	}
+
+	var raw []rawTransaction
+	if err := c.get("/api/smrt/transactions", params, &raw); err != nil {
+		return nil, err
+	}
+
+	return convertRawTransactions(raw), nil
+}
+
+func convertRawTransactions(raw []rawTransaction) []Transaction {
+	out := make([]Transaction, len(raw))
+	for i, t := range raw {
 		merchant := t.MerchantName
 		if merchant == "" {
 			merchant = t.PartnerName
@@ -59,9 +76,13 @@ func convertTransactions(raw *n26.Transactions) []Transaction {
 		if ref == "" && t.PartnerIban != "" {
 			ref = t.PartnerIban
 		}
+		var spaceID string
+		if t.SpaceID != nil {
+			spaceID = *t.SpaceID
+		}
 		out[i] = Transaction{
 			ID:               t.ID,
-			Date:             t.VisibleTS.Time,
+			Date:             time.UnixMilli(t.VisibleTS),
 			Amount:           t.Amount,
 			Currency:         t.CurrencyCode,
 			OriginalAmount:   t.OriginalAmount,
@@ -69,6 +90,7 @@ func convertTransactions(raw *n26.Transactions) []Transaction {
 			ExchangeRate:     t.ExchangeRate,
 			Merchant:         merchant,
 			Category:         t.Category,
+			SpaceID:          spaceID,
 			Reference:        ref,
 		}
 	}
