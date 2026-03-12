@@ -15,7 +15,7 @@ type deviceConfig struct {
 // DeviceTokenPath returns the path to the device token file.
 func DeviceTokenPath() string {
 	dir, _ := os.UserConfigDir()
-	return filepath.Join(dir, "n26cli", "device.json")
+	return filepath.Join(dir, "n26", "device.json")
 }
 
 // LoadOrCreateDeviceToken returns the stored device token, creating one if needed.

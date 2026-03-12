@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jewell-lgtm/n26cli/internal/api"
+	"github.com/jewell-lgtm/n26/internal/api"
 )
 
 func WriteMT940(w io.Writer, txns []api.Transaction, iban string, statementDate time.Time) error {

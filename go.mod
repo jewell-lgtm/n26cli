@@ -1,4 +1,4 @@
-module github.com/jewell-lgtm/n26cli
+module github.com/jewell-lgtm/n26
 
 go 1.25.0
 

@@ -14,7 +14,7 @@ type Config struct {
 // ConfigPath returns the path to the config file.
 func ConfigPath() string {
 	dir, _ := os.UserConfigDir()
-	return filepath.Join(dir, "n26cli", "config.json")
+	return filepath.Join(dir, "n26", "config.json")
 }
 
 // LoadConfig reads the config file. Returns defaults if missing.

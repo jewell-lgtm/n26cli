@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/huh"
 
 
-	"github.com/jewell-lgtm/n26cli/internal/api"
-	"github.com/jewell-lgtm/n26cli/internal/tui"
+	"github.com/jewell-lgtm/n26/internal/api"
+	"github.com/jewell-lgtm/n26/internal/tui"
 )
 
 // RunLoginTUI runs the interactive login flow.

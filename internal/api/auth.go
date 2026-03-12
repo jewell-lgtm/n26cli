@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/guitmz/n26"
 )
@@ -18,9 +20,36 @@ var (
 
 // RequestMFAToken initiates authentication and returns the MFA token.
 func RequestMFAToken(username, password, deviceToken string) (string, error) {
-	token := &n26.Token{}
-	if err := token.GetMFAToken(username, password, deviceToken); err != nil {
-		return "", fmt.Errorf("requesting MFA token: %w", err)
+	data := url.Values{}
+	data.Set("grant_type", "password")
+	data.Set("username", username)
+	data.Set("password", password)
+
+	req, err := http.NewRequest("POST", apiURL+"/oauth2/token", strings.NewReader(data.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("creating auth request: %w", err)
+	}
+	req.Header.Set("Authorization", "Basic bmF0aXZld2ViOg==")
+	req.Header.Set("device-token", deviceToken)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("auth request: %w", err)
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading auth response: %w", err)
+	}
+
+	if res.StatusCode != 403 {
+		return "", fmt.Errorf("auth failed (HTTP %d): %s", res.StatusCode, string(body))
+	}
+
+	var token n26.Token
+	if err := json.Unmarshal(body, &token); err != nil {
+		return "", fmt.Errorf("parsing MFA token: %w", err)
 	}
 	return token.MfaToken, nil
 }

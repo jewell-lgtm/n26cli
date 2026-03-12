@@ -4,7 +4,7 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-const keychainService = "n26cli"
+const keychainService = "n26"
 
 // GetPasswordFromKeychain retrieves the N26 password from the OS keychain.
 // Returns empty string (not error) if no entry exists.

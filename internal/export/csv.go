@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/jewell-lgtm/n26cli/internal/api"
+	"github.com/jewell-lgtm/n26/internal/api"
 )
 
 func WriteCSV(w io.Writer, txns []api.Transaction) error {

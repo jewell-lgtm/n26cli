@@ -10,32 +10,32 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jewell-lgtm/n26cli/internal/api"
-	"github.com/jewell-lgtm/n26cli/internal/auth"
-	"github.com/jewell-lgtm/n26cli/internal/export"
+	"github.com/jewell-lgtm/n26/internal/api"
+	"github.com/jewell-lgtm/n26/internal/auth"
+	"github.com/jewell-lgtm/n26/internal/export"
 )
 
 var format string
 
 func main() {
 	root := &cobra.Command{
-		Use:   "n26cli",
+		Use:   "n26",
 		Short: "N26 banking CLI — interactive auth for humans, structured output for agents",
-		Long: `n26cli wraps the N26 API with two modes of operation:
+		Long: `n26 wraps the N26 API with two modes of operation:
 
   INTERACTIVE (human):
-    n26cli login      Launch TUI to authenticate with email + password + 2FA
+    n26 login      Launch TUI to authenticate with email + password + 2FA
 
   STRUCTURED (agent-safe):
-    n26cli status     Check session validity (JSON to stdout)
-    n26cli balance    Print account balance (JSON to stdout)
-    n26cli spaces     List N26 Spaces with balances (JSON to stdout)
-    n26cli transactions  Fetch & export transactions (CSV/JSON/MT940 to files)
+    n26 status     Check session validity (JSON to stdout)
+    n26 balance    Print account balance (JSON to stdout)
+    n26 spaces     List N26 Spaces with balances (JSON to stdout)
+    n26 transactions  Fetch & export transactions (CSV/JSON/MT940 to files)
 
 The login command requires a human to approve 2FA on their phone.
 All other commands are non-interactive and produce structured output.
 
-Session is stored at ~/.config/n26cli/session.json (0600 permissions).
+Session is stored at ~/.config/n26/session.json (0600 permissions).
 No credentials are ever persisted — only the bearer token.
 
 Exit codes:
@@ -55,6 +55,7 @@ Exit codes:
 	root.AddCommand(configCmd())
 
 	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -69,12 +70,12 @@ func loginCmd() *cobra.Command {
 
 Steps:
   1. Enter email and password (or set N26_USERNAME / N26_PASSWORD env vars)
-  2. A device token is generated/reused from ~/.config/n26cli/device.json
+  2. A device token is generated/reused from ~/.config/n26/device.json
   3. N26 sends a 2FA push notification to your phone — approve it
-  4. Bearer token is saved to ~/.config/n26cli/session.json
+  4. Bearer token is saved to ~/.config/n26/session.json
 
 This command CANNOT be run by an agent — it requires interactive input
-and phone-based 2FA approval. Agents should call 'n26cli status' to
+and phone-based 2FA approval. Agents should call 'n26 status' to
 check if a valid session exists before making data requests.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, err := auth.RunLoginTUI()
@@ -100,7 +101,7 @@ Output fields:
   minutes_remaining int     Minutes until session expires
 
 Use this before any data command to decide if re-authentication is needed.
-If authenticated is false, prompt the human to run 'n26cli login'.`,
+If authenticated is false, prompt the human to run 'n26 login'.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s := auth.LoadSession()
 			out := map[string]interface{}{
@@ -133,7 +134,7 @@ Output fields:
   currency           string   Always "EUR"
   as_of              string   ISO 8601 timestamp of the query
 
-Requires a valid session — run 'n26cli login' first if expired.`,
+Requires a valid session — run 'n26 login' first if expired.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := authenticatedClient()
 			if err != nil {
@@ -164,7 +165,7 @@ Output: JSON array of objects with fields:
   balance   float64  Current balance in EUR
   currency  string   Always "EUR"
 
-Requires a valid session — run 'n26cli login' first if expired.`,
+Requires a valid session — run 'n26 login' first if expired.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := authenticatedClient()
 			if err != nil {
@@ -210,23 +211,23 @@ CSV columns:
   original_currency, original_amount, exchange_rate
 
 Files are written to --output-dir (default: current directory).
-Set a persistent default with: n26cli config set output-dir .DONOTCOMMIT/data/n26
+Set a persistent default with: n26 config set output-dir .DONOTCOMMIT/data/n26
 
-Requires a valid session — run 'n26cli login' first if expired.`,
+Requires a valid session — run 'n26 login' first if expired.`,
 		Example: `  # Last 30 days as CSV
-  n26cli transactions
+  n26 transactions
 
   # Custom date range, grouped by space, to data dir
-  n26cli transactions \
+  n26 transactions \
     --from 2026-02-01 --to 2026-03-12 \
     --group-by-space \
     --output-dir .DONOTCOMMIT/data/n26
 
   # JSON format, last 7 days
-  n26cli transactions --from 2026-03-05 --format json
+  n26 transactions --from 2026-03-05 --format json
 
   # MT940 for accounting software import
-  n26cli transactions --from 2026-01-01 --format mt940`,
+  n26 transactions --from 2026-01-01 --format mt940`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Use config default for output-dir if flag wasn't explicitly set
 			if !cmd.Flags().Changed("output-dir") {
@@ -336,7 +337,7 @@ func configCmd() *cobra.Command {
 		Short: "View or set persistent configuration",
 		Long: `View or set persistent CLI configuration.
 
-Config is stored at ~/.config/n26cli/config.json.
+Config is stored at ~/.config/n26/config.json.
 
 Available settings:
   output_dir    Default directory for transaction exports
@@ -357,8 +358,8 @@ Available keys:
                 (overridden by --output-dir flag on transactions command)
 
 Examples:
-  n26cli config set output-dir .DONOTCOMMIT/data/n26
-  n26cli config set output-dir ~/finances/n26`,
+  n26 config set output-dir .DONOTCOMMIT/data/n26
+  n26 config set output-dir ~/finances/n26`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := auth.LoadConfig()
@@ -416,7 +417,7 @@ func authenticatedClient() (*api.Client, error) {
 	s := auth.LoadSession()
 	if !s.IsValid() {
 		return nil, exitError(1, "session_expired",
-			"No valid session. Run `n26cli login` to authenticate.")
+			"No valid session. Run `n26 login` to authenticate.")
 	}
 	return api.NewClientFromToken(s.AccessToken), nil
 }

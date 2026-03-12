@@ -18,7 +18,7 @@ type Session struct {
 // SessionPath returns the path to the session file.
 func SessionPath() string {
 	dir, _ := os.UserConfigDir()
-	return filepath.Join(dir, "n26cli", "session.json")
+	return filepath.Join(dir, "n26", "session.json")
 }
 
 // LoadSession reads and validates the stored session.
